@@ -1,65 +1,11 @@
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE OverloadedStrings #-}
+module Portfolio (Weights,calculateAverageAnnualizedReturn,generateRandomWeights,generatePortfolios) where
 
-module Main where
-
-import qualified Data.ByteString.Lazy as BL
 import qualified Data.Vector as V
-import Data.Csv
-import GHC.Generics
-import Control.Monad (forM_)
 import System.Random
 
-data StockDay = StockDay
-  { date        :: !String
-  , open        :: !Double  
-  , high        :: !Double
-  , low         :: !Double
-  , close       :: !Double
-  , volume      :: !Int
-  , dividends   :: !Double
-  , stockSplits :: !Double
-  } deriving (Show, Generic)
-
--- Make it an instance of FromRecord for decoding from CSV
-instance FromRecord StockDay 
-instance FromNamedRecord StockDay where
-  parseNamedRecord r = StockDay
-    <$> r .: "Date"
-    <*> r .: "Open"
-    <*> r .: "High"
-    <*> r .: "Low"
-    <*> r .: "Close"
-    <*> r .: "Volume"
-    <*> r .: "Dividends"
-    <*> r .: "Stock Splits"
-
-type ReturnsMatrix = V.Vector (V.Vector Double)
 type Weights = V.Vector Double
 
--- Read the CSV file and parse it into a vector of StockDay records
-readStockData :: FilePath -> IO (Either String (V.Vector StockDay))
-readStockData filePath = do
-  csvData <- BL.readFile filePath
-  case decodeByName csvData of
-    Left err -> return (Left err)
-    Right (_, stocks) -> return (Right stocks)
-
-calculateReturns :: V.Vector StockDay -> V.Vector Double
-calculateReturns stocks
-  | V.length stocks < 2 = V.empty
-  | otherwise = V.zipWith calcReturn (V.tail stocks) stocks
-  where
-    calcReturn today yesterday = (close today / close yesterday) - 1
-
-
-createReturnsMatrix :: V.Vector FilePath -> IO ReturnsMatrix
-createReturnsMatrix filePaths = do
-  results <- V.mapM readStockData filePaths
-  let returnsList = V.map (either (const V.empty) calculateReturns) results
-  return returnsList
-
-calculateAverageAnnualizedReturn :: ReturnsMatrix -> Weights -> Double
+calculateAverageAnnualizedReturn :: V.Vector (V.Vector Double) -> Weights -> Double
 calculateAverageAnnualizedReturn returnsMatrix weights
   | V.null returnsMatrix || V.null (returnsMatrix V.! 0) = 0
   | V.length returnsMatrix /= V.length weights = error "Weights and returns matrix row count must match"
@@ -105,10 +51,3 @@ generatePortfolios :: Int -> Int -> StdGen -> V.Vector (V.Vector Double)
 generatePortfolios n k seed =
   let gens = take k $ iterate (snd . split) seed
   in V.fromList $ map (generateRandomWeights n) gens
-
-main :: IO ()
-main = do
-  let files = V.fromList ["stocks/AAPL.csv", "stocks/AMGN.csv", "stocks/NVDA.csv"]
-  matrix <- createReturnsMatrix files
-  forM_ matrix print
-
