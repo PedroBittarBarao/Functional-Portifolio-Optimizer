@@ -9,106 +9,40 @@ import Data.Csv
 import GHC.Generics
 import Control.Monad (forM_)
 import System.Random
+import Text.Printf (printf)
 
-data StockDay = StockDay
-  { date        :: !String
-  , open        :: !Double  
-  , high        :: !Double
-  , low         :: !Double
-  , close       :: !Double
-  , volume      :: !Int
-  , dividends   :: !Double
-  , stockSplits :: !Double
-  } deriving (Show, Generic)
+import Returns
+import IOUtils
+import Portfolio
 
--- Make it an instance of FromRecord for decoding from CSV
-instance FromRecord StockDay 
-instance FromNamedRecord StockDay where
-  parseNamedRecord r = StockDay
-    <$> r .: "Date"
-    <*> r .: "Open"
-    <*> r .: "High"
-    <*> r .: "Low"
-    <*> r .: "Close"
-    <*> r .: "Volume"
-    <*> r .: "Dividends"
-    <*> r .: "Stock Splits"
+formatPortfolio :: V.Vector Double -> String
+formatPortfolio portfolio =
+  "[" ++ (concat . V.toList $ V.map (\w -> printf "%.5f" w ++ ", ") portfolio) ++ "]"
 
-type ReturnsMatrix = V.Vector (V.Vector Double)
-type Weights = V.Vector Double
-
--- Read the CSV file and parse it into a vector of StockDay records
-readStockData :: FilePath -> IO (Either String (V.Vector StockDay))
-readStockData filePath = do
-  csvData <- BL.readFile filePath
-  case decodeByName csvData of
-    Left err -> return (Left err)
-    Right (_, stocks) -> return (Right stocks)
-
-calculateReturns :: V.Vector StockDay -> V.Vector Double
-calculateReturns stocks
-  | V.length stocks < 2 = V.empty
-  | otherwise = V.zipWith calcReturn (V.tail stocks) stocks
-  where
-    calcReturn today yesterday = (close today / close yesterday) - 1
-
-
-createReturnsMatrix :: V.Vector FilePath -> IO ReturnsMatrix
-createReturnsMatrix filePaths = do
-  results <- V.mapM readStockData filePaths
-  let returnsList = V.map (either (const V.empty) calculateReturns) results
-  return returnsList
-
-calculateAverageAnnualizedReturn :: ReturnsMatrix -> Weights -> Double
-calculateAverageAnnualizedReturn returnsMatrix weights
-  | V.null returnsMatrix || V.null (returnsMatrix V.! 0) = 0
-  | V.length returnsMatrix /= V.length weights = error "Weights and returns matrix row count must match"
-  | otherwise =
-      let avgReturns = V.map average returnsMatrix
-          weightedAvg = V.sum $ V.zipWith (*) avgReturns weights
-      in (1 + weightedAvg) ** 252 - 1
-  where
-    average v = V.sum v / fromIntegral (V.length v)
-
-generateRandomWeights :: Int -> StdGen -> V.Vector Double
-generateRandomWeights n gen =
-  let tries = iterate (snd . split) gen
-      result = head [ normalizeToOne (V.fromList (take n (randomRs (0.0, 0.2) g :: [Double])))
-                    | g <- tries
-                    , let vec = V.fromList (take n (randomRs (0.0, 0.2) g :: [Double]))
-                    , V.sum vec >= 1.0
-                    ]
-  in result
-
-normalizeToOne :: V.Vector Double -> V.Vector Double
-normalizeToOne vec =
-  let total = V.sum vec
-      scaled = V.map (/ total) vec
-      capped = V.map (min 0.2) scaled
-      deficit = 1.0 - V.sum capped
-  in redistribute capped deficit
-
-redistribute :: V.Vector Double -> Double -> V.Vector Double
-redistribute vec deficit
-  | deficit <= 1e-8 = vec
-  | otherwise =
-      let adjustable = V.findIndices (< 0.2) vec
-          totalRoom = V.sum $ V.map (\i -> 0.2 - vec V.! i) adjustable
-          updated = V.imap (\i x ->
-                      if i `V.elem` adjustable && totalRoom > 0
-                        then x + ((0.2 - x) / totalRoom) * deficit
-                        else x) vec
-          newDeficit = 1.0 - V.sum updated
-      in redistribute updated newDeficit
-
-generatePortfolios :: Int -> Int -> StdGen -> V.Vector (V.Vector Double)
-generatePortfolios n k seed =
-  let gens = take k $ iterate (snd . split) seed
-  in V.fromList $ map (generateRandomWeights n) gens
 
 main :: IO ()
 main = do
-  let files = V.fromList ["stocks/AAPL.csv", "stocks/AMGN.csv", "stocks/NVDA.csv"]
+  let files = V.fromList ["stocks/AAPL.csv", "stocks/AMGN.csv", "stocks/AMZN.csv","stocks/AXP.csv","stocks/CRM.csv", "stocks/CSCO.csv","stocks/CVX.csv","stocks/DIS.csv",
+                          "stocks/GS.csv","stocks/HD.csv","stocks/HON.csv","stocks/IBM.csv","stocks/JNJ.csv",
+                          "stocks/JPM.csv","stocks/KO.csv","stocks/MCD.csv","stocks/MMM.csv","stocks/MRK.csv",
+                          "stocks/MSFT.csv","stocks/NKE.csv","stocks/NVDA.csv","stocks/PG.csv","stocks/SHW.csv",
+                          "stocks/TRV.csv","stocks/UNH.csv"]
+  
+  -- Cria e imprime a matriz de retornos
   matrix <- createReturnsMatrix files
-  forM_ matrix print
+  --putStrLn "Matriz de retornos:"
+  --forM_ matrix print
+  
+  -- Gera e imprime 10 portfólios com 25 pesos cada
+  --putStrLn "\nPortfólios gerados:"
+  gen <- getStdGen
+  let portfolios = generatePortfolios 25 10 gen
+  --V.forM_ portfolios (putStrLn . formatPortfolio)
+
+  -- Calcula e imprime o retorno médio anualizado de cada portfólio
+  putStrLn "\nRetornos médios anualizados:"
+  let returns = V.map (calculateAverageAnnualizedReturn matrix) portfolios
+  V.forM_ returns print
+
+
 

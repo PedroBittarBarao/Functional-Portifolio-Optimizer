@@ -1,7 +1,10 @@
-module Portfolio (Weights,calculateAverageAnnualizedReturn,generateRandomWeights,generatePortfolios) where
+{-# LANGUAGE BangPatterns #-}
+
+module Portfolio (Weights, calculateAverageAnnualizedReturn, generateRandomWeights, generatePortfolios) where
 
 import qualified Data.Vector as V
 import System.Random
+import Control.Parallel.Strategies
 
 type Weights = V.Vector Double
 
@@ -50,4 +53,5 @@ redistribute vec deficit
 generatePortfolios :: Int -> Int -> StdGen -> V.Vector (V.Vector Double)
 generatePortfolios n k seed =
   let gens = take k $ iterate (snd . split) seed
-  in V.fromList $ map (generateRandomWeights n) gens
+      portfolios = parMap rdeepseq (generateRandomWeights n) gens
+  in V.fromList portfolios
