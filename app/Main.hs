@@ -4,45 +4,45 @@
 module Main where
 
 import qualified Data.ByteString.Lazy as BL
-import qualified Data.Vector as V
-import Data.Csv
-import GHC.Generics
+import qualified Data.Csv as Csv
 import Control.Monad (forM_)
-import System.Random
+import qualified Data.Vector as V
+import System.IO (withFile, IOMode(WriteMode))
+import Data.List (intercalate)
 import Text.Printf (printf)
+import System.Random (getStdGen)
 
 import Returns
 import IOUtils
 import Portfolio
+import Simulation
+import PortfolioRow
 
-formatPortfolio :: V.Vector Double -> String
-formatPortfolio portfolio =
-  "[" ++ (concat . V.toList $ V.map (\w -> printf "%.5f" w ++ ", ") portfolio) ++ "]"
-
+formatDoubles :: [Double] -> String
+formatDoubles = intercalate ";" . map (printf "%.4f")
 
 main :: IO ()
 main = do
-  let files = V.fromList ["stocks/AAPL.csv", "stocks/AMGN.csv", "stocks/AMZN.csv","stocks/AXP.csv","stocks/CRM.csv", "stocks/CSCO.csv","stocks/CVX.csv","stocks/DIS.csv",
-                          "stocks/GS.csv","stocks/HD.csv","stocks/HON.csv","stocks/IBM.csv","stocks/JNJ.csv",
-                          "stocks/JPM.csv","stocks/KO.csv","stocks/MCD.csv","stocks/MMM.csv","stocks/MRK.csv",
-                          "stocks/MSFT.csv","stocks/NKE.csv","stocks/NVDA.csv","stocks/PG.csv","stocks/SHW.csv",
-                          "stocks/TRV.csv","stocks/UNH.csv"]
-  
-  -- Cria e imprime a matriz de retornos
-  matrix <- createReturnsMatrix files
-  --putStrLn "Matriz de retornos:"
-  --forM_ matrix print
-  
-  -- Gera e imprime 10 portfólios com 25 pesos cada
-  --putStrLn "\nPortfólios gerados:"
-  gen <- getStdGen
-  let portfolios = generatePortfolios 25 10 gen
-  --V.forM_ portfolios (putStrLn . formatPortfolio)
+  let files = V.fromList (map (\t -> "stocks/" ++ t ++ ".csv") dow30Tickers)
+  returnsList <- createReturnsMatrix files
+  let fullMatrix = zip dow30Tickers (V.toList returnsList)
 
-  -- Calcula e imprime o retorno médio anualizado de cada portfólio
-  putStrLn "\nRetornos médios anualizados:"
-  let returns = V.map (calculateAverageAnnualizedReturn matrix) portfolios
-  V.forM_ returns print
+  seed <- getStdGen
 
-
-
+  let combs = allCombinations
+  withFile "best_portfolios.csv" WriteMode $ \h -> do
+    forM_ combs $ \tickersList -> do
+      let returns = selectReturnsMatrix tickersList fullMatrix
+          portfolios = generatePortfolios 25 1000 seed
+          stats = V.map (\w -> 
+                    let ret  = calculateAverageAnnualizedReturn returns w
+                        vol  = calculateAnnualizedVolatility returns w
+                        shrp = if vol == 0 then 0 else ret / vol
+                    in PortfolioRow
+                          (intercalate ";" tickersList)
+                          (formatDoubles (V.toList w))
+                          ret
+                          vol
+                          shrp
+                  ) portfolios
+      BL.hPut h (Csv.encodeDefaultOrderedByName (V.toList stats))

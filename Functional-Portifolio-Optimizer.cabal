@@ -58,12 +58,16 @@ library
   exposed-modules:     Returns
                      , Portfolio
                      , IOUtils
+                     , Simulation
+                     , PortfolioRow
   build-depends:       base >=4.7 && <5
                      , vector
                      , bytestring
                      , cassava
                      , random
                      , parallel
+                     , split
+                     , random-shuffle
   default-language:    Haskell2010
 
 
