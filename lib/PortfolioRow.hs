@@ -1,19 +1,16 @@
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveAnyClass #-}
 
 module PortfolioRow where
 
 import GHC.Generics (Generic)
-import Data.Csv (ToRecord, ToNamedRecord, DefaultOrdered)
+import Data.Csv (DefaultOrdered, ToNamedRecord, ToRecord)
+import Control.DeepSeq (NFData)
 
 data PortfolioRow = PortfolioRow
-  { tickers    :: String
-  , weights    :: String
-  , ret        :: Double
-  , volatility :: Double
-  , sharpe     :: Double
-  } deriving (Generic, Show)
-
-instance ToRecord PortfolioRow
-instance ToNamedRecord PortfolioRow
-instance DefaultOrdered PortfolioRow
+  { tickers :: String
+  , weights :: String
+  , ret     :: Double
+  , vol     :: Double
+  , sharpe  :: Double
+  } deriving (Show, Generic, NFData, DefaultOrdered, ToNamedRecord, ToRecord)

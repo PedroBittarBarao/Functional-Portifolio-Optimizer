@@ -60,8 +60,9 @@ redistribute vec deficit
 generatePortfolios :: Int -> Int -> StdGen -> V.Vector (V.Vector Double)
 generatePortfolios n k seed =
   let gens = take k $ iterate (snd . split) seed
-      portfolios = parMap rdeepseq (generateRandomWeights n) gens
+      portfolios = map (generateRandomWeights n) gens  
   in V.fromList portfolios
+
 
 calculateAnnualizedVolatility :: V.Vector (V.Vector Double) -> Weights -> Double
 calculateAnnualizedVolatility returnsMatrix weights
@@ -78,8 +79,8 @@ calculateAnnualizedVolatility returnsMatrix weights
 calculateCovarianceMatrix :: V.Vector (V.Vector Double) -> V.Vector (V.Vector Double)
 calculateCovarianceMatrix returns =
   let n = V.length returns
-      cov i j = covariance (returns V.! i) (returns V.! j)
-  in V.generate n (\i -> V.generate n (\j -> cov i j))
+      rows = parMap rdeepseq (\i -> V.generate n (\j -> covariance (returns V.! i) (returns V.! j))) [0 .. n-1]
+  in V.fromList rows
 
 covariance :: V.Vector Double -> V.Vector Double -> Double
 covariance xs ys =
