@@ -73,6 +73,8 @@ library
                      , containers
   default-language:    Haskell2010
 
+  ghc-options: -O2 -threaded 
+
 
 executable Functional-Portifolio-Optimizer
   hs-source-dirs:      app
@@ -91,4 +93,4 @@ executable Functional-Portifolio-Optimizer
                      , split
                      , containers
   default-language:    Haskell2010
-  ghc-options:         -Wall
+  ghc-options:        -O2 -threaded -rtsopts -with-rtsopts=-N
