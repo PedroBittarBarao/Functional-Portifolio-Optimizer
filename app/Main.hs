@@ -1,25 +1,29 @@
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Main where
 
+import Data.List.Split (chunksOf)
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Csv as Csv
-import qualified Data.Vector as V
-import System.IO (withFile, IOMode(WriteMode))
-import System.Random (newStdGen, StdGen)
-import Control.Monad (forM)
-import Data.List (intercalate, maximumBy)
+import System.IO (withFile, IOMode(..))
+import Control.Monad (forM, forM_)
+import Control.Concurrent.Async (mapConcurrently)
 import Data.Time.Clock (getCurrentTime, diffUTCTime)
-import Text.Printf (printf)
+import System.Random (newStdGen,StdGen)
+
+import qualified Data.Vector as V
 import qualified Data.Map as Map
+import Data.List(intercalate)
+import Text.Printf(printf)
+import Data.List (maximumBy)
 
 import Returns
 import IOUtils
 import Portfolio
 import Simulation
 import PortfolioRow
+
+batchSize :: Int
+batchSize = 200  -- Ajuste para controlar uso de memória
 
 formatDoubles :: [Double] -> String
 formatDoubles = intercalate ";" . map (printf "%.4f")
@@ -39,7 +43,7 @@ processCombination (tickersList, seed) stockCache = do
     then return (PortfolioRow "" "" 0 0 0)
     else do
       -- Calculate portfolio statistics
-      let portfolios = generatePortfolios 27 20 seed
+      let portfolios = generatePortfolios 25 1000 seed
           stats = V.map (\w -> 
                     let anRet = calculateAverageAnnualizedReturn validReturns w
                         volat = calculateAnnualizedVolatility validReturns w
@@ -58,23 +62,38 @@ processCombination (tickersList, seed) stockCache = do
 main :: IO ()
 main = do
   start <- getCurrentTime
-
   let combs = allCombinations
+      batches = chunksOf batchSize combs
 
-  -- Load all stock data files at once
-  stockCache <- loadAllStockData (concat combs)
+  allResults <- withFile "best_portfolios.csv" WriteMode $ \h -> do
+    -- Escreve cabeçalho CSV
+    let header = Csv.encodeDefaultOrderedByName ([] :: [PortfolioRow])  -- Garante que o cabeçalho vem da instância ToNamedRecord
+    BL.hPut h header
 
-  -- Process the combinations sequentially
-  results <- forM combs $ \tickersList -> do
-    seed <- newStdGen
-    processCombination (tickersList, seed) stockCache
+    -- Para acumular todos os resultados
+    fmap concat $
+      forM batches $ \batch -> do
+        let tickersInBatch = concat batch
+        stockCache <- loadAllStockData tickersInBatch
 
-  -- Find the best portfolio
-  let bestOverall = maximumBy (\a b -> compare (sharpe a) (sharpe b)) results
+        -- Processa as combinações do batch em paralelo
+        results <- mapConcurrently (\tickersList -> do
+                                      seed <- newStdGen
+                                      processCombination (tickersList, seed) stockCache
+                                   ) batch
 
-  -- Write the result to the CSV file
-  withFile "best_portfolio.csv" WriteMode $ \h -> do
-    BL.hPut h (Csv.encodeDefaultOrderedByName [bestOverall])
+        -- Escreve os resultados no CSV
+        BL.hPut h (Csv.encodeDefaultOrderedByName results)
+        return results
+
+  -- Calcula o melhor portfólio após todos os batches
+  let bestOverall = maximumBy (\a b -> compare (sharpe a) (sharpe b)) allResults
+
+  -- Escreve o melhor portfólio em um arquivo separado
+  BL.writeFile "best_overall_portfolio.csv" $
+    Csv.encodeDefaultOrderedByName [bestOverall]
 
   end <- getCurrentTime
   putStrLn $ "Tempo total: " ++ show (diffUTCTime end start)
+  putStrLn "Melhor portfólio salvo em best_overall_portfolio.csv"
+

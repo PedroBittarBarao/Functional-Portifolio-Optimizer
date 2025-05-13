@@ -30,7 +30,7 @@ Each file must be named like `AAPL.csv`, `GOOG.csv`, etc., and follow the standa
 Then, execute:
 
 ```bash
-cabal run Functional-Portifolio-Optimizer
+cabal run Functional-Portifolio-Optimizer -- -N
 ```
 
 The optimizer will:
