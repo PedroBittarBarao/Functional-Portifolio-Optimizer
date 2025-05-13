@@ -65,8 +65,8 @@ generatePortfolios 27 20 seed
 
 ### Sample Output:
 ```
-Total execution time: 181.82 seconds
-Best Sharpe ratio found: 3.484
+Total execution time: 96.6 seconds
+Best Sharpe ratio found: 3.22
 ```
 
 The final portfolio is saved in `best_portfolio.csv` and contains:
